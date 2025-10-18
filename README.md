@@ -171,7 +171,7 @@ python bot.py
 ### 🔐 Администраторы
 
 ```python
-ADMIN_IDS = [1077204675, ваш_telegram_id]
+ADMIN_IDS = [ваш_telegram_id]
 ```
 
 ### ⚙️ Параметры
