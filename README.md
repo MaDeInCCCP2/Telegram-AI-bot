@@ -290,7 +290,420 @@ CMD ["python", "bot.py"]
 
 # 🚀 **Руководство по развёртыванию**
 
-*(весь подробный раздел, который ты предоставил — включая локальный запуск, Linux, systemd, Docker, VPS/VDS, troubleshooting, обновление и поддержку, полностью вставляется сюда без изменений)*
+# 🚀 Руководство по развёртыванию
+
+Это руководство поможет вам развернуть бота на различных платформах.
+
+## 📋 Содержание
+
+- [Локальный запуск](#локальный-запуск)
+- [Linux сервер](#linux-сервер)
+- [Systemd сервис](#systemd-сервис)
+- [Docker](#docker)
+- [VPS/VDS рекомендации](#vpsvds-рекомендации)
+- [Troubleshooting](#troubleshooting)
+
+---
+
+## 🖥️ Локальный запуск
+
+### Windows
+
+```powershell
+# 1. Клонируйте репозиторий
+git clone <your-repo-url>
+cd tgbot
+
+# 2. Создайте виртуальное окружение
+python -m venv .venv
+.venv\Scripts\activate
+
+# 3. Установите зависимости
+pip install -r requirements.txt
+
+# 4. Настройте .env
+copy .env.example .env
+# Отредактируйте .env, добавьте TELEGRAM_BOT_TOKEN
+
+# 5. Запустите бота
+python bot.py
+```
+
+### Linux/Mac
+
+```bash
+# 1. Клонируйте репозиторий
+git clone <your-repo-url>
+cd tgbot
+
+# 2. Создайте виртуальное окружение
+python3 -m venv .venv
+source .venv/bin/activate
+
+# 3. Установите зависимости
+pip install -r requirements.txt
+
+# 4. Настройте .env
+cp .env.example .env
+nano .env  # Добавьте TELEGRAM_BOT_TOKEN
+
+# 5. Запустите бота
+python bot.py
+```
+
+---
+
+## 🐧 Linux сервер
+
+### Установка на чистый Ubuntu/Debian сервер
+
+```bash
+# Обновление системы
+sudo apt update && sudo apt upgrade -y
+
+# Установка Python 3.11+
+sudo apt install python3.11 python3.11-venv python3-pip git -y
+
+# Клонирование проекта
+cd /opt
+sudo git clone <your-repo-url> tgbot
+cd tgbot
+
+# Создание виртуального окружения
+sudo python3.11 -m venv .venv
+sudo .venv/bin/pip install -r requirements.txt
+
+# Настройка .env
+sudo cp .env.example .env
+sudo nano .env  # Добавьте токены
+
+# Создание пользователя для бота
+sudo useradd -r -s /bin/false tgbot
+sudo chown -R tgbot:tgbot /opt/tgbot
+
+# Первый запуск (тест)
+sudo -u tgbot .venv/bin/python bot.py
+```
+
+### Запуск в фоне с nohup
+
+```bash
+# Запуск
+nohup python bot.py > bot.log 2>&1 &
+
+# Проверка
+ps aux | grep bot.py
+
+# Остановка
+kill $(pgrep -f bot.py)
+
+# Просмотр логов
+tail -f bot.log
+```
+
+---
+
+## ⚙️ Systemd сервис
+
+Создайте systemd сервис для автозапуска бота:
+
+```bash
+# Создайте файл сервиса
+sudo nano /etc/systemd/system/tgbot.service
+```
+
+Содержимое файла:
+
+```ini
+[Unit]
+Description=Telegram AI Bot
+After=network.target
+
+[Service]
+Type=simple
+User=tgbot
+Group=tgbot
+WorkingDirectory=/opt/tgbot
+Environment="PATH=/opt/tgbot/.venv/bin"
+ExecStart=/opt/tgbot/.venv/bin/python /opt/tgbot/bot.py
+Restart=always
+RestartSec=10
+
+# Логирование
+StandardOutput=append:/opt/tgbot/logs/bot.log
+StandardError=append:/opt/tgbot/logs/bot_error.log
+
+[Install]
+WantedBy=multi-user.target
+```
+
+Управление сервисом:
+
+```bash
+# Создайте директорию для логов
+sudo mkdir -p /opt/tgbot/logs
+sudo chown tgbot:tgbot /opt/tgbot/logs
+
+# Перезагрузите systemd
+sudo systemctl daemon-reload
+
+# Включите автозапуск
+sudo systemctl enable tgbot
+
+# Запустите сервис
+sudo systemctl start tgbot
+
+# Проверьте статус
+sudo systemctl status tgbot
+
+# Просмотр логов
+sudo journalctl -u tgbot -f
+
+# Остановка
+sudo systemctl stop tgbot
+
+# Перезапуск
+sudo systemctl restart tgbot
+```
+
+---
+
+## 🐳 Docker
+
+### Dockerfile
+
+Создайте `Dockerfile`:
+
+```dockerfile
+FROM python:3.11-slim
+
+# Установка зависимостей системы
+RUN apt-get update && apt-get install -y \
+    gcc \
+    && rm -rf /var/lib/apt/lists/*
+
+# Рабочая директория
+WORKDIR /app
+
+# Копирование requirements.txt
+COPY requirements.txt .
+
+# Установка Python зависимостей
+RUN pip install --no-cache-dir -r requirements.txt
+
+# Копирование кода
+COPY . .
+
+# Создание директорий
+RUN mkdir -p user_documents logs
+
+# Запуск
+CMD ["python", "bot.py"]
+```
+
+### docker-compose.yml
+
+```yaml
+version: '3.8'
+
+services:
+  tgbot:
+    build: .
+    container_name: tgbot
+    restart: unless-stopped
+    env_file:
+      - .env
+    volumes:
+      - ./user_documents:/app/user_documents
+      - ./chat_memory.json:/app/chat_memory.json
+      - ./documents_index.json:/app/documents_index.json
+      - ./logs:/app/logs
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+```
+
+### Использование
+
+```bash
+# Сборка и запуск
+docker-compose up -d
+
+# Просмотр логов
+docker-compose logs -f
+
+# Остановка
+docker-compose down
+
+# Перезапуск
+docker-compose restart
+
+# Пересборка после изменений
+docker-compose up -d --build
+```
+
+---
+
+## 🌐 VPS/VDS рекомендации
+
+### Минимальные требования
+
+- **CPU**: 1 ядро (рекомендуется 2)
+- **RAM**: 512 MB (рекомендуется 1 GB)
+- **Диск**: 5 GB (SSD предпочтительнее)
+- **ОС**: Ubuntu 22.04 LTS / Debian 11+
+
+### Рекомендуемые провайдеры
+
+- **Для России**: Timeweb, Beget, Selectel
+- **Международные**: DigitalOcean, Hetzner, Linode, Vultr
+- **Бюджетные**: Contabo, OVH
+
+### Безопасность
+
+```bash
+# Настройка firewall
+sudo ufw allow 22/tcp
+sudo ufw enable
+
+# Автоматические обновления безопасности
+sudo apt install unattended-upgrades -y
+sudo dpkg-reconfigure -plow unattended-upgrades
+
+# Ограничение SSH доступа (опционально)
+sudo nano /etc/ssh/sshd_config
+# Установите: PermitRootLogin no
+sudo systemctl restart sshd
+```
+
+### Мониторинг
+
+```bash
+# Установка htop для мониторинга
+sudo apt install htop -y
+
+# Проверка использования ресурсов
+htop
+
+# Проверка логов
+sudo journalctl -u tgbot --since "1 hour ago"
+
+# Проверка дискового пространства
+df -h
+
+# Проверка памяти
+free -h
+```
+
+---
+
+## 🔧 Troubleshooting
+
+### Бот не запускается
+
+```bash
+# Проверьте логи
+sudo journalctl -u tgbot -n 50
+
+# Проверьте .env файл
+cat .env | grep TELEGRAM_BOT_TOKEN
+
+# Проверьте права доступа
+ls -la /opt/tgbot
+
+# Тест запуска вручную
+sudo -u tgbot /opt/tgbot/.venv/bin/python /opt/tgbot/bot.py
+```
+
+### Проблемы с зависимостями
+
+```bash
+# Переустановка зависимостей
+pip install --upgrade --force-reinstall -r requirements.txt
+
+# Проверка версии Python
+python --version  # Должен быть 3.11+
+```
+
+### Проблемы с памятью
+
+```bash
+# Очистка кэша документов
+rm -f documents_index.json
+rm -rf user_documents/*
+
+# Очистка истории
+rm -f chat_memory.json
+
+# Перезапуск с ограничением памяти (systemd)
+# Добавьте в [Service]:
+MemoryLimit=512M
+```
+
+### Бот отвечает медленно
+
+1. Проверьте скорость интернета на сервере
+2. Попробуйте другую модель AI
+3. Уменьшите MAX_HISTORY_MESSAGES в bot.py
+4. Используйте более быстрый провайдер (gpt4freepro обычно быстрее)
+
+### Ошибки API
+
+```bash
+# Проверьте доступность API
+curl https://gpt4free.pro/v1/models
+
+# Проверьте токены Puter
+python -c "import puterjs; print(len(puterjs.get_working_auth_tokens()))"
+
+# Обновите кэш моделей
+rm -f puter_models_cache.json
+sudo systemctl restart tgbot
+```
+
+---
+
+## 📝 Обновление бота
+
+```bash
+# Остановка
+sudo systemctl stop tgbot
+
+# Бэкап данных
+cp chat_memory.json chat_memory.json.backup
+cp documents_index.json documents_index.json.backup
+
+# Обновление кода
+cd /opt/tgbot
+sudo git pull
+
+# Обновление зависимостей
+sudo .venv/bin/pip install -r requirements.txt --upgrade
+
+# Запуск
+sudo systemctl start tgbot
+
+# Проверка
+sudo systemctl status tgbot
+```
+
+---
+
+## 📞 Поддержка
+
+Если у вас возникли проблемы:
+
+1. Проверьте [Troubleshooting](#troubleshooting)
+2. Посмотрите Issues в GitHub
+3. Создайте новую Issue с подробным описанием
+4. Свяжитесь через Telegram (если указан в README)
+
+---
+
+**Удачного развёртывания! 🚀**
+
 
 ---
 
